@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Interactive RAG Visualizer</title>
+
+<style>
+/* ---------------------------
+   MODERN CLEAN UI STYLING
+----------------------------*/
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #0f172a;
+    color: white;
+    margin: 0;
+    padding: 20px;
+}
+
+h1 {
+    text-align: center;
+    margin-bottom: 30px;
+}
+
+.container {
+    max-width: 1100px;
+    margin: auto;
+}
+
+.card {
+    background: #1e293b;
+    padding: 20px;
+    border-radius: 12px;
+    margin-bottom: 20px;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+}
+
+button {
+    background: #3b82f6;
+    border: none;
+    padding: 10px 16px;
+    border-radius: 8px;
+    color: white;
+    cursor: pointer;
+    margin-top: 10px;
+}
+
+button:hover {
+    background: #2563eb;
+}
+
+input, textarea, select {
+    width: 100%;
+    padding: 8px;
+    margin-top: 6px;
+    margin-bottom: 10px;
+    border-radius: 6px;
+    border: none;
+}
+
+textarea {
+    height: 120px;
+}
+
+.progress {
+    height: 8px;
+    background: #334155;
+    border-radius: 4px;
+    margin-top: 10px;
+}
+
+.progress-bar {
+    height: 8px;
+    background: #22c55e;
+    border-radius: 4px;
+    width: 0%;
+    transition: width 0.4s ease;
+}
+
+.chunk, .embedding {
+    background: #334155;
+    padding: 10px;
+    border-radius: 6px;
+    margin-top: 6px;
+    font-size: 14px;
+}
+
+.highlight {
+    background: #16a34a;
+}
+</style>
+</head>
+<body>
+
+<h1>🧠 Interactive RAG Visualizer</h1>
+
+<div class="container">
+
+<!-- STEP 1: CHUNKING -->
+<div class="card">
+<h2>1️⃣ Chunk Your Text</h2>
+
+<textarea id="inputText" placeholder="Enter your document text here..."></textarea>
+
+<label>Chunk Size (words)</label>
+<input type="number" id="chunkSize" value="40">
+
+<label>Sliding Window (overlap words)</label>
+<input type="number" id="overlap" value="10">
+
+<button onclick="chunkText()">Chunk</button>
+
+<div class="progress"><div id="chunkProgress" class="progress-bar"></div></div>
+
+<div id="chunksContainer"></div>
+</div>
+
+<!-- STEP 2 & 3: EMBEDDING + SAVE -->
+<div class="card">
+<h2>2️⃣ Create Vector Embeddings</h2>
+<button onclick="createEmbeddings()">Create Embeddings</button>
+
+<div class="progress"><div id="embedProgress" class="progress-bar"></div></div>
+<div id="embeddingsContainer"></div>
+
+<h2>3️⃣ Save Vectors</h2>
+<button onclick="saveVectors()">Save to Local Storage</button>
+<div class="progress"><div id="saveProgress" class="progress-bar"></div></div>
+</div>
+
+<!-- STEP 4 & 5 -->
+<div class="card">
+<h2>4️⃣ Ask a Question</h2>
+
+<input type="text" id="userQuery" placeholder="Enter your question..." />
+
+<label>Top N Chunks</label>
+<input type="number" id="topN" value="2">
+
+<button onclick="retrieve()">Ask</button>
+
+<div class="progress"><div id="retrieveProgress" class="progress-bar"></div></div>
+
+<h3>Top Matching Chunks</h3>
+<div id="retrievedChunks"></div>
+</div>
+
+<!-- STEP 6 & 7 -->
+<div class="card">
+<h2>6️⃣ Generated System Prompt</h2>
+<div id="systemPrompt"></div>
+
+<h2>7️⃣ LLM Response (Simulated)</h2>
+<button onclick="callLLM()">Send to LLM</button>
+<div class="progress"><div id="llmProgress" class="progress-bar"></div></div>
+<div id="llmResponse"></div>
+</div>
+
+</div>
+
+<script>
+/* ==================================================
+   GLOBAL VARIABLES
+==================================================*/
+
+let chunks = [];
+let embeddings = [];
+let retrieved = [];
+
+/* ==================================================
+   STEP 1: CHUNKING LOGIC
+   Splits text into word chunks with overlap
+==================================================*/
+function chunkText() {
+
+    const text = document.getElementById("inputText").value;
+    const chunkSize = parseInt(document.getElementById("chunkSize").value);
+    const overlap = parseInt(document.getElementById("overlap").value);
+
+    const words = text.split(/\s+/);
+    chunks = [];
+
+    for (let i = 0; i < words.length; i += (chunkSize - overlap)) {
+        const chunk = words.slice(i, i + chunkSize).join(" ");
+        if (chunk.trim().length > 0) {
+            chunks.push(chunk);
+        }
+    }
+
+    // Display chunks visually
+    const container = document.getElementById("chunksContainer");
+    container.innerHTML = "";
+    chunks.forEach((chunk, index) => {
+        container.innerHTML += `<div class="chunk"><b>Chunk ${index+1}:</b> ${chunk}</div>`;
+    });
+
+    document.getElementById("chunkProgress").style.width = "100%";
+}
+
+/* ==================================================
+   STEP 2: CREATE EMBEDDINGS
+   Simulated deterministic embeddings using hashing
+==================================================*/
+function textToVector(text) {
+
+    const vector = new Array(50).fill(0);
+
+    // Simple deterministic hashing for visualization
+    for (let i = 0; i < text.length; i++) {
+        vector[i % 50] += text.charCodeAt(i);
+    }
+
+    return vector;
+}
+
+function createEmbeddings() {
+
+    embeddings = chunks.map(chunk => textToVector(chunk));
+
+    const container = document.getElementById("embeddingsContainer");
+    container.innerHTML = "";
+
+    embeddings.forEach((vector, index) => {
+        container.innerHTML += `
+            <div class="embedding">
+            <b>Chunk ${index+1} Vector:</b><br>
+            [${vector.slice(0,8).join(", ")} ...]
+            </div>`;
+    });
+
+    document.getElementById("embedProgress").style.width = "100%";
+}
+
+/* ==================================================
+   STEP 3: SAVE TO LOCAL STORAGE
+==================================================*/
+function saveVectors() {
+
+    localStorage.setItem("ragChunks", JSON.stringify(chunks));
+    localStorage.setItem("ragEmbeddings", JSON.stringify(embeddings));
+
+    document.getElementById("saveProgress").style.width = "100%";
+}
+
+/* ==================================================
+   COSINE SIMILARITY FUNCTION
+==================================================*/
+function cosineSimilarity(a, b) {
+
+    let dot = 0;
+    let normA = 0;
+    let normB = 0;
+
+    for (let i = 0; i < a.length; i++) {
+        dot += a[i] * b[i];
+        normA += a[i] * a[i];
+        normB += b[i] * b[i];
+    }
+
+    return dot / (Math.sqrt(normA) * Math.sqrt(normB));
+}
+
+/* ==================================================
+   STEP 4 & 5: RETRIEVE TOP N CHUNKS
+==================================================*/
+function retrieve() {
+
+    const query = document.getElementById("userQuery").value;
+    const topN = parseInt(document.getElementById("topN").value);
+
+    const storedChunks = JSON.parse(localStorage.getItem("ragChunks"));
+    const storedEmbeddings = JSON.parse(localStorage.getItem("ragEmbeddings"));
+
+    const queryVector = textToVector(query);
+
+    let scores = storedEmbeddings.map((vec, i) => {
+        return {
+            index: i,
+            score: cosineSimilarity(queryVector, vec)
+        };
+    });
+
+    scores.sort((a,b) => b.score - a.score);
+
+    retrieved = scores.slice(0, topN);
+
+    const container = document.getElementById("retrievedChunks");
+    container.innerHTML = "";
+
+    retrieved.forEach(r => {
+        container.innerHTML += `
+        <div class="chunk highlight">
+        <b>Score:</b> ${r.score.toFixed(3)} <br>
+        ${storedChunks[r.index]}
+        </div>`;
+    });
+
+    generateSystemPrompt(query, storedChunks);
+
+    document.getElementById("retrieveProgress").style.width = "100%";
+}
+
+/* ==================================================
+   STEP 6: GENERATE SYSTEM PROMPT
+==================================================*/
+function generateSystemPrompt(query, storedChunks) {
+
+    let contextText = retrieved.map(r => storedChunks[r.index]).join("\n\n");
+
+    const prompt = `
+Answer the following user query based ONLY on the given context.
+
+User Query:
+"${query}"
+
+Context:
+${contextText}
+`;
+
+    document.getElementById("systemPrompt").innerText = prompt;
+}
+
+/* ==================================================
+   STEP 7: SIMULATED LLM CALL
+   (For real usage, connect to OpenAI API)
+==================================================*/
+function callLLM() {
+
+    document.getElementById("llmProgress").style.width = "50%";
+
+    setTimeout(() => {
+        document.getElementById("llmResponse").innerHTML =
+        `<div class="chunk">
+        🤖 Simulated LLM Answer:<br><br>
+        Based on the retrieved context, here is a response synthesized from the most relevant chunks.
+        </div>`;
+
+        document.getElementById("llmProgress").style.width = "100%";
+    }, 1000);
+}
+</script>
+
+</body>
+</html>
